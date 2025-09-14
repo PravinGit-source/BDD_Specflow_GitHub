@@ -1,40 +1,82 @@
 trigger:
-- main  # automatic build on push
+- main  # automatic build on push to main branch
 
 pool:
-  vmImage: 'windows-latest'
+  vmImage: 'windows-latest'  # Windows agent to avoid NuGet/Mono issues
 
-steps:
-# Install .NET SDK
-- task: UseDotNet@2
-  inputs:
-    packageType: 'sdk'
-    version: '7.x'  # your .NET version
+stages:
+# ===========================
+# Stage 1: Automatic Build
+# ===========================
+- stage: Build
+  displayName: 'Automatic Build'
+  jobs:
+  - job: BuildJob
+    displayName: 'Build and Test'
+    steps:
+    # Restore NuGet packages
+    - task: NuGetCommand@2
+      inputs:
+        restoreSolution: '**/*.sln'
+    
+    # Build solution
+    - task: VSBuild@1
+      inputs:
+        solution: '**/*.sln'
+        platform: 'Any CPU'
+        configuration: 'Release'
+    
+    # Run all SpecFlow tests (optional, can skip if you only want release to run tests)
+    - task: VSTest@2
+      inputs:
+        platform: 'Any CPU'
+        configuration: 'Release'
+        testSelector: 'testAssemblies'
+        testAssemblyVer2: '**\*Tests.dll'
+        searchFolder: '$(System.DefaultWorkingDirectory)'
 
-# Restore NuGet packages
-- task: NuGetToolInstaller@1
+    # Publish build artifacts
+    - task: PublishBuildArtifacts@1
+      inputs:
+        pathToPublish: '$(Build.ArtifactStagingDirectory)'
+        artifactName: 'drop'
+        publishLocation: 'Container'
 
-- task: NuGetCommand@2
-  inputs:
-    restoreSolution: '**/*.sln'
-
-# Build solution
-- task: VSBuild@1
-  inputs:
-    solution: '**/*.sln'
-    msbuildArgs: '/p:Configuration=Release'
-    platform: 'Any CPU'
-    configuration: 'Release'
-
-# Run SpecFlow / automation tests
-- task: VSTest@2
-  inputs:
-    platform: 'Any CPU'
-    configuration: 'Release'
-
-# Publish artifacts for release
-- task: PublishBuildArtifacts@1
-  inputs:
-    pathToPublish: '$(Build.ArtifactStagingDirectory)'
-    artifactName: 'drop'
-    publishLocation: 'Container'
+# ===========================
+# Stage 2: Manual Release
+# ===========================
+- stage: Release
+  displayName: 'Manual Release'
+  condition: false  # Prevent automatic run; must trigger manually
+  jobs:
+  - job: ManualReleaseJob
+    displayName: 'Run SpecFlow Tests by Tag'
+    steps:
+    # Restore NuGet packages
+    - task: NuGetCommand@2
+      inputs:
+        restoreSolution: '**/*.sln'
+    
+    # Build solution
+    - task: VSBuild@1
+      inputs:
+        solution: '**/*.sln'
+        platform: 'Any CPU'
+        configuration: 'Release'
+    
+    # Run SpecFlow tests with specific tag (e.g., @SmokeTest)
+    - task: VSTest@2
+      inputs:
+        platform: 'Any CPU'
+        configuration: 'Release'
+        testSelector: 'testAssemblies'
+        testAssemblyVer2: '**\*Tests.dll'
+        searchFolder: '$(System.DefaultWorkingDirectory)'
+        testFiltercriteria: 'TestCategory=SmokeTest'  # Replace SmokeTest with your tag
+    
+    # Publish test results
+    - task: PublishTestResults@2
+      inputs:
+        testResultsFormat: 'VSTest'
+        testResultsFiles: '**/TestResults/*.trx'
+        mergeTestResults: true
