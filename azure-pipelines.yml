@@ -1,35 +1,40 @@
-stages:
-- stage: Build
-  displayName: 'Automatic Build'
-  jobs:
-  - job: BuildJob
-    steps:
-    - task: UseDotNet@2
-      inputs:
-        packageType: 'sdk'
-        version: '7.x'
-    - task: NuGetCommand@2
-      inputs:
-        restoreSolution: '**/*.sln'
-    - task: VSBuild@1
-      inputs:
-        solution: '**/*.sln'
-        platform: 'Any CPU'
-        configuration: 'Release'
-    - task: VSTest@2
-      inputs:
-        platform: 'Any CPU'
-        configuration: 'Release'
-    - task: PublishBuildArtifacts@1
-      inputs:
-        pathToPublish: '$(Build.ArtifactStagingDirectory)'
-        artifactName: 'drop'
-        publishLocation: 'Container'
+trigger:
+- main  # automatic build on push
 
-- stage: Release
-  displayName: 'Manual Release'
-  condition: false  # prevents automatic run
-  jobs:
-  - job: ManualReleaseJob
-    steps:
-    - script: echo "Manual release stage. Trigger manually when needed."
+pool:
+  vmImage: 'windows-latest'
+
+steps:
+# Install .NET SDK
+- task: UseDotNet@2
+  inputs:
+    packageType: 'sdk'
+    version: '7.x'  # your .NET version
+
+# Restore NuGet packages
+- task: NuGetToolInstaller@1
+
+- task: NuGetCommand@2
+  inputs:
+    restoreSolution: '**/*.sln'
+
+# Build solution
+- task: VSBuild@1
+  inputs:
+    solution: '**/*.sln'
+    msbuildArgs: '/p:Configuration=Release'
+    platform: 'Any CPU'
+    configuration: 'Release'
+
+# Run SpecFlow / automation tests
+- task: VSTest@2
+  inputs:
+    platform: 'Any CPU'
+    configuration: 'Release'
+
+# Publish artifacts for release
+- task: PublishBuildArtifacts@1
+  inputs:
+    pathToPublish: '$(Build.ArtifactStagingDirectory)'
+    artifactName: 'drop'
+    publishLocation: 'Container'
