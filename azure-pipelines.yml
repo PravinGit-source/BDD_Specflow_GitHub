@@ -1,39 +1,35 @@
-trigger:
-- main   # automatic build on push
+stages:
+- stage: Build
+  displayName: 'Automatic Build'
+  jobs:
+  - job: BuildJob
+    steps:
+    - task: UseDotNet@2
+      inputs:
+        packageType: 'sdk'
+        version: '7.x'
+    - task: NuGetCommand@2
+      inputs:
+        restoreSolution: '**/*.sln'
+    - task: VSBuild@1
+      inputs:
+        solution: '**/*.sln'
+        platform: 'Any CPU'
+        configuration: 'Release'
+    - task: VSTest@2
+      inputs:
+        platform: 'Any CPU'
+        configuration: 'Release'
+    - task: PublishBuildArtifacts@1
+      inputs:
+        pathToPublish: '$(Build.ArtifactStagingDirectory)'
+        artifactName: 'drop'
+        publishLocation: 'Container'
 
-pool:
-  vmImage: 'windows-latest'
-
-steps:
-# Install .NET SDK
-- task: UseDotNet@2
-  inputs:
-    packageType: 'sdk'
-    version: '7.x'
-
-# Restore NuGet packages
-- task: NuGetToolInstaller@1
-
-- task: NuGetCommand@2
-  inputs:
-    restoreSolution: '**/*.sln'
-
-# Build solution
-- task: VSBuild@1
-  inputs:
-    solution: '**/*.sln'
-    platform: 'Any CPU'
-    configuration: 'Release'
-
-# Run SpecFlow tests
-- task: VSTest@2
-  inputs:
-    platform: 'Any CPU'
-    configuration: 'Release'
-
-# Publish artifacts
-- task: PublishBuildArtifacts@1
-  inputs:
-    pathToPublish: '$(Build.ArtifactStagingDirectory)'
-    artifactName: 'drop'
-    publishLocation: 'Container'
+- stage: Release
+  displayName: 'Manual Release'
+  condition: false  # prevents automatic run
+  jobs:
+  - job: ManualReleaseJob
+    steps:
+    - script: echo "Manual release stage. Trigger manually when needed."
