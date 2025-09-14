@@ -1,0 +1,35 @@
+# Build Folders
+bin/
+obj/
+TestResults/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.cache
+*.log
+*.pdb
+
+# Git
+.git/
+
+# NuGet
+*.nupkg
+packages/
+*.snupkg
+
+# Visual Studio Code
+.vscode/
+
+# Rider IDE
+.idea/
+
+# SpecFlow / test specific
+TestResults/
+*.trx
+*.feature~
+*.feature.cs
+
+# Ignore local secrets or config if needed
+appsettings.Development.json
