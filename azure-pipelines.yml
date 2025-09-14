@@ -1,8 +1,20 @@
+# ================================
+# Azure DevOps Pipeline for SpecFlow
+# ================================
+
 trigger:
-- main  # automatic build on push to main branch
+- main  # Automatic build on push
+
+parameters:
+- name: runRelease
+  type: boolean
+  default: false  # Set true when manually triggering Release stage
+- name: testTags
+  type: string
+  default: 'Regression'  # Default tags, comma-separated for multiple
 
 pool:
-  vmImage: 'windows-latest'  # Windows agent to avoid NuGet/Mono issues
+  vmImage: 'windows-latest'
 
 stages:
 # ===========================
@@ -12,21 +24,27 @@ stages:
   displayName: 'Automatic Build'
   jobs:
   - job: BuildJob
-    displayName: 'Build and Test'
+    displayName: 'Build and Run Tests'
     steps:
-    # Restore NuGet packages
+    - task: UseDotNet@2
+      inputs:
+        packageType: 'sdk'
+        version: '7.x'
+
+    - task: NuGetToolInstaller@1
+
     - task: NuGetCommand@2
       inputs:
         restoreSolution: '**/*.sln'
-    
-    # Build solution
+
     - task: VSBuild@1
       inputs:
         solution: '**/*.sln'
+        msbuildArgs: '/p:Configuration=Release'
         platform: 'Any CPU'
         configuration: 'Release'
-    
-    # Run all SpecFlow tests (optional, can skip if you only want release to run tests)
+
+    # Run all automation tests (optional in build)
     - task: VSTest@2
       inputs:
         platform: 'Any CPU'
@@ -35,7 +53,6 @@ stages:
         testAssemblyVer2: '**\*Tests.dll'
         searchFolder: '$(System.DefaultWorkingDirectory)'
 
-    # Publish build artifacts
     - task: PublishBuildArtifacts@1
       inputs:
         pathToPublish: '$(Build.ArtifactStagingDirectory)'
@@ -47,33 +64,40 @@ stages:
 # ===========================
 - stage: Release
   displayName: 'Manual Release'
-  condition: false  # Prevent automatic run; must trigger manually
+  condition: eq(${{ parameters.runRelease }}, true)  # Only runs when manually triggered
   jobs:
   - job: ManualReleaseJob
-    displayName: 'Run SpecFlow Tests by Tag'
+    displayName: 'Run SpecFlow Tests by Tags'
     steps:
-    # Restore NuGet packages
+    - task: UseDotNet@2
+      inputs:
+        packageType: 'sdk'
+        version: '7.x'
+
+    - task: NuGetToolInstaller@1
+
     - task: NuGetCommand@2
       inputs:
         restoreSolution: '**/*.sln'
-    
-    # Build solution
+
     - task: VSBuild@1
       inputs:
         solution: '**/*.sln'
+        msbuildArgs: '/p:Configuration=Release'
         platform: 'Any CPU'
         configuration: 'Release'
-    
-    # Run SpecFlow tests with specific tag (e.g., @SmokeTest)
+
+    # Run SpecFlow tests filtered by tags
     - task: VSTest@2
+      displayName: 'Run SpecFlow Tests by Tags'
       inputs:
         platform: 'Any CPU'
         configuration: 'Release'
         testSelector: 'testAssemblies'
         testAssemblyVer2: '**\*Tests.dll'
         searchFolder: '$(System.DefaultWorkingDirectory)'
-        testFiltercriteria: 'TestCategory=SmokeTest'  # Replace SmokeTest with your tag
-    
+        testFiltercriteria: 'TestCategory in (${{ parameters.testTags }})'  # multiple tags: comma-separated
+
     # Publish test results
     - task: PublishTestResults@2
       inputs:
