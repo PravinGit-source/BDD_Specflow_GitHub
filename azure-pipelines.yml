@@ -1,52 +1,85 @@
 # ----------------------------
-# Build & Regression Test Stage
+# Azure DevOps Pipeline for SpecFlow C# Project
 # ----------------------------
+
+trigger:
+  - main   # Automatic CI build on main branch
+
+pool:
+  vmImage: 'windows-latest'
+
+variables:
+  buildConfiguration: 'Release'
+  testProjectPath: '**/*Tests/*.csproj'   # Adjust if your test project folder is different
+  testCategory: 'Regression'
+  trxFileName: 'test_results.trx'
+
 stages:
-- stage: BuildAndTest
-  displayName: 'Build and Run Regression Tests'
+# ----------------------------
+# Stage 1: Build
+# ----------------------------
+- stage: Build
+  displayName: 'Automatic Build'
   jobs:
-  - job: BuildAndRegression
-    displayName: 'Build & Regression Test Job'
-    pool:
-      vmImage: 'windows-latest'
+  - job: BuildJob
+    displayName: 'Build Job'
     steps:
-      # 1️⃣ Install .NET SDK
+      # Install .NET SDK
       - task: UseDotNet@2
         inputs:
           packageType: 'sdk'
           version: '7.x'
 
-      # 2️⃣ Restore NuGet packages
+      # Restore NuGet packages
       - task: NuGetCommand@2
         inputs:
           restoreSolution: '**/*.sln'
 
-      # 3️⃣ Build solution
+      # Build solution
       - task: VSBuild@1
         inputs:
           solution: '**/*.sln'
           platform: 'Any CPU'
-          configuration: 'Release'
+          configuration: '$(buildConfiguration)'
 
-      # 4️⃣ Run SpecFlow NUnit tests with Regression tag
-      - task: DotNetCoreCLI@2
-        displayName: 'Run Regression Tests'
-        inputs:
-          command: 'test'
-          projects: '**/*Tests/*.csproj'   # Adjust if your test project path is different
-          arguments: '--configuration Release --filter "TestCategory=Regression" --logger "trx;LogFileName=test_results.trx"'
-
-      # 5️⃣ Publish test results to Azure DevOps
-      - task: PublishTestResults@2
-        condition: succeededOrFailed()
-        inputs:
-          testResultsFormat: 'VSTest'
-          testResultsFiles: '**/test_results.trx'
-          mergeTestResults: true
-
-      # 6️⃣ Optional: publish artifacts
+      # Publish build artifacts (optional, needed for release)
       - task: PublishBuildArtifacts@1
         inputs:
           pathToPublish: '$(Build.ArtifactStagingDirectory)'
           artifactName: 'drop'
           publishLocation: 'Container'
+
+# ----------------------------
+# Stage 2: Regression Tests (Manual)
+# ----------------------------
+- stage: Regression
+  displayName: 'Manual Regression Tests'
+  condition: eq(variables['Build.SourceBranchName'], 'main')  # Ensure only on main
+  dependsOn: Build
+  jobs:
+  - job: RegressionJob
+    displayName: 'Run Regression Tests'
+    pool:
+      vmImage: 'windows-latest'
+    steps:
+      # Install .NET SDK
+      - task: UseDotNet@2
+        inputs:
+          packageType: 'sdk'
+          version: '7.x'
+
+      # Run only Regression-tagged tests
+      - task: DotNetCoreCLI@2
+        displayName: 'Run Regression Tests'
+        inputs:
+          command: 'test'
+          projects: '$(testProjectPath)'
+          arguments: '--configuration $(buildConfiguration) --filter "TestCategory=$(testCategory)" --logger "trx;LogFileName=$(trxFileName)"'
+
+      # Publish test results
+      - task: PublishTestResults@2
+        condition: succeededOrFailed()
+        inputs:
+          testResultsFormat: 'VSTest'
+          testResultsFiles: '**/$(trxFileName)'
+          mergeTestResults: true
