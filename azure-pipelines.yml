@@ -1,106 +1,83 @@
-# ================================
-# Azure DevOps Pipeline for SpecFlow
-# ================================
-
+# Azure Pipelines YAML for C# SpecFlow Project
 trigger:
-- main  # Automatic build on push
+  - main   # automatic build when code is pushed to main
 
 parameters:
-- name: runRelease
-  type: boolean
-  default: false  # Set true when manually triggering Release stage
-- name: testTags
-  type: string
-  default: 'Regression'  # Default tags, comma-separated for multiple
+  - name: runRelease
+    type: boolean
+    default: false
+  - name: testTags
+    type: string
+    default: 'Regression'  # default tag to run
 
 pool:
   vmImage: 'windows-latest'
 
 stages:
-# ===========================
-# Stage 1: Automatic Build
-# ===========================
+# ----------------------------
+# Build & Test Stage (Automatic)
+# ----------------------------
 - stage: Build
-  displayName: 'Automatic Build'
+  displayName: 'Automatic Build & Run Tests'
   jobs:
   - job: BuildJob
-    displayName: 'Build and Run Tests'
+    displayName: 'Build and Test Job'
     steps:
-    - task: UseDotNet@2
-      inputs:
-        packageType: 'sdk'
-        version: '7.x'
+      # Install .NET SDK
+      - task: UseDotNet@2
+        inputs:
+          packageType: 'sdk'
+          version: '7.x'
 
-    - task: NuGetToolInstaller@1
+      # Install NuGet tool
+      - task: NuGetToolInstaller@1
 
-    - task: NuGetCommand@2
-      inputs:
-        restoreSolution: '**/*.sln'
+      # Restore NuGet packages
+      - task: NuGetCommand@2
+        inputs:
+          restoreSolution: '**/*.sln'
 
-    - task: VSBuild@1
-      inputs:
-        solution: '**/*.sln'
-        msbuildArgs: '/p:Configuration=Release'
-        platform: 'Any CPU'
-        configuration: 'Release'
+      # Build solution
+      - task: VSBuild@1
+        inputs:
+          solution: '**/*.sln'
+          platform: 'Any CPU'
+          configuration: 'Release'
 
-    # Run all automation tests (optional in build)
-    - task: VSTest@2
-      inputs:
-        platform: 'Any CPU'
-        configuration: 'Release'
-        testSelector: 'testAssemblies'
-        testAssemblyVer2: '**\*Tests.dll'
-        searchFolder: '$(System.DefaultWorkingDirectory)'
+      # Run SpecFlow / automation tests
+      - task: VSTest@2
+        inputs:
+          platform: 'Any CPU'
+          configuration: 'Release'
+          testAssemblyVer2: '**\*Tests*.dll'   # adjust if your test assembly name is different
+          searchFolder: '$(System.DefaultWorkingDirectory)'
+          testFiltercriteria: 'TestCategory=$(testTags)'  # run only tests with this tag
 
-    - task: PublishBuildArtifacts@1
-      inputs:
-        pathToPublish: '$(Build.ArtifactStagingDirectory)'
-        artifactName: 'drop'
-        publishLocation: 'Container'
+      # Explicitly publish test results (backup, ensures Tests tab always shows results)
+      - task: PublishTestResults@2
+        condition: succeededOrFailed()
+        inputs:
+          testResultsFormat: 'VSTest'
+          testResultsFiles: '**/*.trx'
+          mergeTestResults: true
 
-# ===========================
-# Stage 2: Manual Release
-# ===========================
+      # Publish artifacts for manual release
+      - task: PublishBuildArtifacts@1
+        inputs:
+          pathToPublish: '$(Build.ArtifactStagingDirectory)'
+          artifactName: 'drop'
+          publishLocation: 'Container'
+
+# ----------------------------
+# Release Stage (Manual)
+# ----------------------------
 - stage: Release
   displayName: 'Manual Release'
-  condition: eq(${{ parameters.runRelease }}, true)  # Only runs when manually triggered
+  condition: eq('${{ parameters.runRelease }}', true)  # only runs when manually triggered
   jobs:
   - job: ManualReleaseJob
-    displayName: 'Run SpecFlow Tests by Tags'
+    displayName: 'Manual Release Job'
     steps:
-    - task: UseDotNet@2
-      inputs:
-        packageType: 'sdk'
-        version: '7.x'
-
-    - task: NuGetToolInstaller@1
-
-    - task: NuGetCommand@2
-      inputs:
-        restoreSolution: '**/*.sln'
-
-    - task: VSBuild@1
-      inputs:
-        solution: '**/*.sln'
-        msbuildArgs: '/p:Configuration=Release'
-        platform: 'Any CPU'
-        configuration: 'Release'
-
-    # Run SpecFlow tests filtered by tags
-    - task: VSTest@2
-      displayName: 'Run SpecFlow Tests by Tags'
-      inputs:
-        platform: 'Any CPU'
-        configuration: 'Release'
-        testSelector: 'testAssemblies'
-        testAssemblyVer2: '**\*Tests.dll'
-        searchFolder: '$(System.DefaultWorkingDirectory)'
-        testFiltercriteria: 'TestCategory in (${{ parameters.testTags }})'  # multiple tags: comma-separated
-
-    # Publish test results
-    - task: PublishTestResults@2
-      inputs:
-        testResultsFormat: 'VSTest'
-        testResultsFiles: '**/TestResults/*.trx'
-        mergeTestResults: true
+      - script: |
+          echo "Manual release stage. Trigger manually when needed."
+          echo "You can also deploy or run additional tasks here."
