@@ -1,67 +1,44 @@
-# Azure Pipelines YAML for C# SpecFlow Project
+# Final Azure Pipelines YAML for Build + Regression (mimics company setup)
+
 trigger:
-  - main   # automatic build when code is pushed to main
+  - main   # CI: runs automatically when code is pushed to main
 
 parameters:
-  - name: runRelease
+  - name: runRegression
     type: boolean
-    default: false
-  - name: testTags
-    type: string
-    default: 'Regression'  # default tag to run
+    default: false  # set to true when you want to run regression manually/scheduled
 
 pool:
   vmImage: 'windows-latest'
 
+# ----------------------------
+# Stage 1: Build (always runs)
+# ----------------------------
 stages:
-# ----------------------------
-# Build & Test Stage (Automatic)
-# ----------------------------
 - stage: Build
-  displayName: 'Automatic Build & Run Tests'
+  displayName: 'Build Stage (CI)'
   jobs:
   - job: BuildJob
-    displayName: 'Build and Test Job'
+    displayName: 'Build Job'
     steps:
-      # Install .NET SDK
       - task: UseDotNet@2
         inputs:
           packageType: 'sdk'
           version: '7.x'
 
-      # Install NuGet tool
       - task: NuGetToolInstaller@1
 
-      # Restore NuGet packages
       - task: NuGetCommand@2
         inputs:
           restoreSolution: '**/*.sln'
 
-      # Build solution
       - task: VSBuild@1
         inputs:
           solution: '**/*.sln'
           platform: 'Any CPU'
           configuration: 'Release'
 
-      # Run SpecFlow / automation tests
-      - task: VSTest@2
-        inputs:
-          platform: 'Any CPU'
-          configuration: 'Release'
-          testAssemblyVer2: '**\*Tests*.dll'   # adjust if your test assembly name is different
-          searchFolder: '$(System.DefaultWorkingDirectory)'
-          testFiltercriteria: 'TestCategory=$(testTags)'  # run only tests with this tag
-
-      # Explicitly publish test results (backup, ensures Tests tab always shows results)
-      - task: PublishTestResults@2
-        condition: succeededOrFailed()
-        inputs:
-          testResultsFormat: 'VSTest'
-          testResultsFiles: '**/*.trx'
-          mergeTestResults: true
-
-      # Publish artifacts for manual release
+      # Publish artifacts for next stage (like company release)
       - task: PublishBuildArtifacts@1
         inputs:
           pathToPublish: '$(Build.ArtifactStagingDirectory)'
@@ -69,15 +46,26 @@ stages:
           publishLocation: 'Container'
 
 # ----------------------------
-# Release Stage (Manual)
+# Stage 2: Regression (manual / scheduled)
 # ----------------------------
-- stage: Release
-  displayName: 'Manual Release'
-  condition: eq('${{ parameters.runRelease }}', true)  # only runs when manually triggered
+- stage: Regression
+  displayName: 'Regression Suite (acts as Release)'
+  condition: eq('${{ parameters.runRegression }}', true)  # only runs if you enable it
+  dependsOn: Build
   jobs:
-  - job: ManualReleaseJob
-    displayName: 'Manual Release Job'
+  - job: RegressionJob
+    displayName: 'Run Regression Tests'
     steps:
-      - script: |
-          echo "Manual release stage. Trigger manually when needed."
-          echo "You can also deploy or run additional tasks here."
+      - task: VSTest@2
+        inputs:
+          testAssemblyVer2: '**\*Tests*.dll'
+          searchFolder: '$(System.DefaultWorkingDirectory)'
+          platform: 'Any CPU'
+          configuration: 'Release'
+
+      - task: PublishTestResults@2
+        condition: succeededOrFailed()
+        inputs:
+          testResultsFormat: 'VSTest'
+          testResultsFiles: '**/*.trx'
+          mergeTestResults: true
