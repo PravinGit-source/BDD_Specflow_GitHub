@@ -1,71 +1,52 @@
-# Final Azure Pipelines YAML for Build + Regression (mimics company setup)
-
-trigger:
-  - main   # CI: runs automatically when code is pushed to main
-
-parameters:
-  - name: runRegression
-    type: boolean
-    default: false  # set to true when you want to run regression manually/scheduled
-
-pool:
-  vmImage: 'windows-latest'
-
 # ----------------------------
-# Stage 1: Build (always runs)
+# Build & Regression Test Stage
 # ----------------------------
 stages:
-- stage: Build
-  displayName: 'Build Stage (CI)'
+- stage: BuildAndTest
+  displayName: 'Build and Run Regression Tests'
   jobs:
-  - job: BuildJob
-    displayName: 'Build Job'
+  - job: BuildAndRegression
+    displayName: 'Build & Regression Test Job'
+    pool:
+      vmImage: 'windows-latest'
     steps:
+      # 1️⃣ Install .NET SDK
       - task: UseDotNet@2
         inputs:
           packageType: 'sdk'
           version: '7.x'
 
-      - task: NuGetToolInstaller@1
-
+      # 2️⃣ Restore NuGet packages
       - task: NuGetCommand@2
         inputs:
           restoreSolution: '**/*.sln'
 
+      # 3️⃣ Build solution
       - task: VSBuild@1
         inputs:
           solution: '**/*.sln'
           platform: 'Any CPU'
           configuration: 'Release'
 
-      # Publish artifacts for next stage (like company release)
+      # 4️⃣ Run SpecFlow NUnit tests with Regression tag
+      - task: DotNetCoreCLI@2
+        displayName: 'Run Regression Tests'
+        inputs:
+          command: 'test'
+          projects: '**/*Tests/*.csproj'   # Adjust if your test project path is different
+          arguments: '--configuration Release --filter "TestCategory=Regression" --logger "trx;LogFileName=test_results.trx"'
+
+      # 5️⃣ Publish test results to Azure DevOps
+      - task: PublishTestResults@2
+        condition: succeededOrFailed()
+        inputs:
+          testResultsFormat: 'VSTest'
+          testResultsFiles: '**/test_results.trx'
+          mergeTestResults: true
+
+      # 6️⃣ Optional: publish artifacts
       - task: PublishBuildArtifacts@1
         inputs:
           pathToPublish: '$(Build.ArtifactStagingDirectory)'
           artifactName: 'drop'
           publishLocation: 'Container'
-
-# ----------------------------
-# Stage 2: Regression (manual / scheduled)
-# ----------------------------
-- stage: Regression
-  displayName: 'Regression Suite (acts as Release)'
-  condition: eq('${{ parameters.runRegression }}', true)  # only runs if you enable it
-  dependsOn: Build
-  jobs:
-  - job: RegressionJob
-    displayName: 'Run Regression Tests'
-    steps:
-      - task: VSTest@2
-        inputs:
-          testAssemblyVer2: '**\*Tests*.dll'
-          searchFolder: '$(System.DefaultWorkingDirectory)'
-          platform: 'Any CPU'
-          configuration: 'Release'
-
-      - task: PublishTestResults@2
-        condition: succeededOrFailed()
-        inputs:
-          testResultsFormat: 'VSTest'
-          testResultsFiles: '**/*.trx'
-          mergeTestResults: true
